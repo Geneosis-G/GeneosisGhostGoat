@@ -1,0 +1,48 @@
+Whooooo!
+
+Being dead is usually not a really good deal. But if you can explore the world as a soul, scare people and even control them against their will... You will certainly wish to die immediately :D
+
+[b]FERATURES[/b]
+- GHOST GOAT: You can become a ghost.
+
+[b]COMMANDS[/b]
+- [b]Alive + Slowmotion + [1]:[/b] Die and become a ghost.
+- [b]Ghost + Licking body + [R]:[/b] Possess the body.
+- [b]NPC + [1]:[/b] Scream.
+- [b]NPC + [E]:[/b] Applaud.
+- [b]NPC + [R]:[/b] Dance.
+
+[b]CHARACTERISTICS[/b]
+- As a ghost, you can fly, walk throug anything and possess bodies.
+- A ghost can't ragdoll, can't take damage and is not detected by triggers.
+- If you use the respawn button as a ghost, you will immediately possess your original body.
+- Mutators remain on your original body when you die, they are not transferred to the ghost.
+- You can attach mutators to the ghost but as soon as you possess a body they will be lost.
+- You can't possess the bodies of other players.
+- Controlled NPCs can't use mutators.
+
+[b]KNOWN BUGS[/b]
+- Possessing a NPC following a path can sometimes crash the game (infinite loop of the old AI of the NPC).
+- As a ghost, when you lick an object, your tongue is not attached to the object.
+- When controlling a NPC, the camera zoom is not working.
+- Trying to ride a vehicle when controlling a NPC mess up the NPC collision box.
+
+[b]FAQ[/b]
+- How do I apply your mutators to my goat?
+[i]First hit the [+ Subscribe] button on this page to download the mod. Then in the main menu of the game, select Custom Game, then you will see a list of all the mutators installed on your computer. Double click on the mutators you want in this list to add them to your goat.[/i]
+
+- The mod is installed but does nothing when I use it, what should I do?
+[i]Unsubscribe to the mod, delete the content of this file "C:\ Program Files (x86) \Steam \SteamApps \common \GoatSimulator \GoatGame \Config \GoatMod.ini", then resubscribe and see if that fixed the problem.[/i]
+
+- My game is crashing at startup, what do I do?
+[i]Try to follow [url=http://steamcommunity.com/sharedfiles/filedetails/?id=247411111]this guide[/url] and see if it fixed your problem. If not, I don't think I can do anything more sorry.[/i]
+
+[b]DEV NOTES[/b]
+[quote=About this mod]This mod is probably the one that tooks me the longer to release after I started it, but it's finally here!
+It combines two main ideas I had when I started modding on Goat Sim: The first one is the possibility to control NPCs (I wanted to include that in the Target Goat mod). The second is the possibility to fly.
+I started this mod by creating the ghost mode, which means creating a new body that is transparent, can fly and can pass through objects. Ironically the thing in this list I spent a lot of time on is the transparency X) The main problem was that you can't just add alpha using code, or more precisely you can, but if the texture of the goat don't have the correct parameters it have no effect at all -_- Hopefully the 1.1 update saved me by adding a transparent texture on every goat (used when the camera is too closed to the goat).
+When the ghost was done, I started thinking about a better way to control NPCs. The first method I thought about was to convert the GGNpc object into a GGGoat object and then control it with the default player controller: This method was way too hard to implement and that's why abandoned the idea during the Target Goat conception.
+The second method was to turn the goat invisible and to attach it to the NPC. This was working nicely, except for moving the NPC: The AI of the NPC was completely broking the player commands and the NPC was acting not at all as expected.
+Finally the last method I imagined, and the one in the current version, just attach the player controller to the GGNpc object. This is only possible since 1.1, the only remaining problem with this method is that the camera is a bit crappy: As the controlled object is not a GGGoat, the camera mode is set to default and you lost all the effects of the goat camera (zoom, smooth moves, bounces when sprinting, etc...).
+So with this last method, the mouvements are working correctly, I just had to manually configure the ragdoll key and the animations to play on the NPC.
+[/quote]

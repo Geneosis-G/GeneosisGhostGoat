@@ -1,0 +1,383 @@
+class GhostGoat extends GGMutator;
+
+var GGGoat gMe;
+var GGGoat body;
+var bool isGhost;
+var int keypressedcount;
+var GGNpc controlledNPC;
+var bool controllingNPC;
+var ParticleSystem mGhostParticleTemplate;
+var ParticleSystemComponent mGhostParticle;
+var bool wasDriving;
+var float oldPanicDuration;
+
+/**
+ * if the mutator should be selectable in the Custom Game Menu.
+ */
+static function bool IsUnlocked()
+{
+	return True;
+}
+
+/**
+ * See super.
+ */
+function ModifyPlayer(Pawn Other)
+{
+	local GGGoat goat;
+	local Controller myController;
+
+	super.ModifyPlayer( other );
+	
+	goat = GGGoat( other );
+	
+	if( goat != none )
+	{
+		if(goat != gMe)
+		{
+			if(gMe != none)
+			{
+				myController=gMe.Controller;
+				gMe.Controller=none;
+				myController.Unpossess();
+				myController.Possess(goat, false);
+				goat.Controller=myController;
+				if(isGhost)
+				{
+					mGhostParticle = goat.WorldInfo.MyEmitterPool.SpawnEmitterMeshAttachment( mGhostParticleTemplate, goat.mesh, 'JetPackSocket', true );
+					mGhostParticle.SetHidden(true);
+				}
+			}
+			else
+			{
+				//Replace controller by custom controller
+				goat.Controller=Spawn()
+			}
+			gMe=goat;
+		}
+		
+		GGPlayerInput( PlayerController( goat.Controller ).PlayerInput ).RegisterKeyDownListener( KeyDown );
+		GGPlayerInput( PlayerController( goat.Controller ).PlayerInput ).RegisterKeyUpListener( KeyUp );
+	}
+}
+
+function KeyDown( name newKey )
+{
+	keypressedcount++;
+	
+	if(newKey == 'ONE')
+	{
+		if(WorldInfo.Game.GameSpeed < 1.0f)
+		{
+			if(!isGhost || controllingNPC)
+			{
+				Die();
+			}
+		}
+	}
+	
+	if(newKey == 'R')
+	{
+		if(isGhost && !controllingNPC)
+		{
+			if(GGGoat(gMe.mGrabbedItem) == body || GGNpc(gMe.mGrabbedItem) != none)
+			{
+				Resurect(Pawn(gMe.mGrabbedItem));
+			}
+		}
+	}
+	
+	//if(newKey == 'E')
+	//{
+	//	FixTongueBug();
+	//}
+}
+
+function KeyUp( name newKey )
+{
+	keypressedcount--;
+}
+
+/*
+ * Bugfix
+ */
+event Tick( float deltaTime )
+{
+	super.Tick(deltaTime);
+	
+	//Stop if not moving
+	if(isGhost && keypressedcount == 0)
+	{
+		gMe.Velocity.X=0;
+		gMe.Velocity.Y=0;
+		gMe.Velocity.Z=0;
+	}
+	
+	//Fix driving problems
+	if(isGhost)
+	{
+		if(GGSVehicle(gMe.DrivenVehicle) == none && wasDriving)
+		{
+			SetGhostModePhysics(gMe);
+		}
+		if(GGSVehicle(gMe.DrivenVehicle) != none && controllingNPC)
+		{
+			GGSVehicle(gMe.DrivenVehicle).KickOutDriver();
+			SetGhostModePhysics(gMe);
+		}
+		
+		wasDriving=GGSVehicle(gMe.DrivenVehicle) != none;
+	}
+	
+	//Fix tongue bug
+	//if(gMe.mGrabbedItem != none)
+	//{
+	//	FixTongueBug(deltaTime);
+	//}
+	
+	//Control NPC
+	if(controllingNPC)
+	{
+		//If the NPC have been destroyed for some reason
+		if(controlledNPC == none)
+		{
+			Die();
+		}
+		//Force your position and rotation to follow controlled NPC
+		//and control NPC velocity
+		else
+		{
+			gMe.SetLocation(controlledNPC.Location);
+			gMe.SetRotation(controlledNPC.Rotation);
+			WorldInfo.Game.Broadcast(self, "Velocity" $ gMe.Velocity);
+			if(gMe.Velocity.x != 0 || gMe.Velocity.y != 0 || gMe.Velocity.z != 0)
+			{
+				controlledNPC.Velocity+=controlledNPC.Velocity+gMe.Velocity;
+			}
+		}
+	}
+}
+
+/**
+ * Kill the goat or the NPC and turn it into a ghost
+ */
+function Die()
+{
+	ActivateGhostMode(true, none);
+}
+
+/**
+ * Resurect the goat
+ */
+function Resurect(Pawn newBody)
+{
+	ActivateGhostMode(false, newBody);
+}
+
+/**
+ * Called when a player respawns
+ */
+function OnPlayerRespawn( PlayerController respawnController, bool died )
+{
+	if(isGhost)
+	{
+		//If we were controlling a NPC
+		if(controlledNPC != none)
+		{
+			Die();
+		}
+		Resurect(body);
+	}
+	
+	super.OnPlayerRespawn(respawnController, died);
+}
+
+/*
+ * Ragdoll management
+ */
+function OnRagdoll( Actor ragdolledActor, bool isRagdoll )
+{
+	super.OnRagdoll(ragdolledActor, isRagdoll);
+	
+	if( ragdolledActor == gMe)
+	{
+		//Ghosts can't ragdoll
+		if(isRagdoll && isGhost)
+		{
+			gMe.SetRagdoll(false);
+			SetGhostModePhysics(gMe);
+			
+			//Switch ragdoll on controlled NPC
+			if(controllingNPC)
+			{
+				if(controlledNPC.mIsRagdoll)
+				{
+					controlledNPC.StandUp();
+				}
+				else
+				{
+					controlledNPC.SetRagdoll(true);
+				}
+			}
+		}
+	}
+}
+
+/*
+ * Turn you into a ghost or reintegrate a body
+ */
+function ActivateGhostMode(bool activate, Pawn newBody)
+{
+	local PostProcessSettings pps;
+	local LocalPlayer localPlayer;
+	local GGGoat ghost, oldBody;
+	local float height, radius;
+	local vector v;
+	
+	localPlayer=LocalPlayer(PlayerController(gMe.Controller).Player);
+	v=vect(0,0,0);
+	
+	if(activate)
+	{
+		//Ghost visual effect
+		pps.bEnableBloom=false;
+		pps.bOverride_Scene_Desaturation = true;
+		pps.Scene_Desaturation = 1.0;
+		localPlayer.OverridePostProcessSettings(pps, 0.0);
+		
+		//Goat to ghost transition
+		if(!isGhost)
+		{
+			if(gMe.DrivenVehicle != none)
+			{
+				return;
+			}
+			
+			oldBody=gMe;
+			oldBody.SetRagdoll(False);
+			oldBody.GetBoundingCylinder(radius, height);
+			
+			body = gMe;
+
+			gMe.DropGrabbedItem();
+			
+			v.z=height*2;
+			//WorldInfo.Game.Broadcast(self, "height" $ height);
+			//WorldInfo.Game.Broadcast(self, "Location" $ gMe.Location);
+			//WorldInfo.Game.Broadcast(self, "newLocation" $ gMe.Location+v);
+			//ghost = Spawn (class'GGGoat',,, gMe.Location+v, gMe.Rotation, gMe, false);
+			ghost = Spawn (class'GGGoat',,, gMe.Location+v, gMe.Rotation,, false);
+			ghost.Mesh.SetMaterial( 0, ghost.mTransparentMaterial );
+			ghost.StopBaa();
+			ghost.PlayBaa();
+			
+			isGhost=true;
+			ModifyPlayer(ghost);
+			SetGhostModePhysics(ghost);
+			
+			oldBody.SetRagdoll(True);
+		}
+		//NPC to ghost transition
+		else
+		{
+			controllingNPC=false;
+			if(controlledNPC != none)
+			{
+				controlledNPC.SetRagdoll(False);
+				controlledNPC.GetBoundingCylinder(radius, height);
+				
+				v.z=height*2;
+				gMe.SetLocation(controlledNPC.Location+v);
+			}
+			SetGhostModePhysics(gMe);
+			ghost.StopBaa();
+			ghost.PlayBaa();
+			
+			if(controlledNPC != none)
+			{
+				controlledNPC.SetRagdoll(True);
+				GGAIController(controlledNPC.Controller).mPanicDuration=oldPanicDuration;
+			}
+			controlledNPC=none;
+		}
+		mGhostParticle.SetHidden(false);
+	}
+	else
+	{
+		if(isGhost && !controllingNPC)
+		{
+			//Normal visual effect
+			localPlayer.ClearPostProcessSettingsOverride(2.0);
+			
+			ghost=gMe;
+			//Ghost to goat transition
+			if(body != none && GGGoat(newBody) == body)
+			{
+				gMe.DropGrabbedItem();
+				isGhost=false;
+				ModifyPlayer(body);
+				body=none;
+				controlledNPC=none;
+				ghost.Destroy();
+			}
+			//Ghost to NPC transition
+			if(GGNpc(newBody) != none)
+			{
+				gMe.DropGrabbedItem();
+				controllingNPC=true;
+				controlledNPC=GGNpc(newBody);
+				gMe.SetLocation(controlledNPC.Location);
+				oldPanicDuration=GGAIController(controlledNPC.Controller).mPanicDuration;
+				GGAIController(controlledNPC.Controller).mPanicDuration=0;
+				SetGhostModePhysics(gMe);
+			}
+			mGhostParticle.SetHidden(true);
+		}
+	}
+}
+
+function FixTongueBug(float deltaTime)
+{
+	if(isGhost && !controllingNPC)
+	{
+		//body.SetTongueActive( false );
+		//gMe.SetTongueActive( false );
+		body.UpdateGrabber(deltaTime);
+		gMe.UpdateGrabber(deltaTime);
+	}
+}
+
+function SetGhostModePhysics(GGGoat ghost)
+{
+	ghost.bCanBeDamaged=false;
+	ghost.bBlockActors=false;
+	ghost.Mesh.SetPhysicsAsset(none);
+	//WorldInfo.Game.Broadcast(self, "state : " $ ghost.Controller.GetStateName());
+	if(!controllingNPC)
+	{
+		ghost.CollisionComponent=none;
+		ghost.SetPhysics(PHYS_Flying);
+		ghost.Mesh.SetHidden(false);
+		ghost.Controller.GotoState('PlayerFlying');
+	}
+	else
+	{
+		ghost.CollisionComponent=ghost.Mesh;
+		ghost.SetPhysics(PHYS_None);
+		ghost.Mesh.SetHidden(true);
+		ghost.Controller.GotoState('PlayerWalking');
+	}
+}
+
+defaultproperties
+{
+	gMe=none
+	body=none
+	isGhost=false
+	keypressedcount=0
+	controlledNPC=none
+	controllingNPC=false
+	mGhostParticle=none
+	mGhostParticleTemplate=ParticleSystem'Goat_Effects.Effects.Effects_RepulsiveGoat_01'
+	wasDriving=false
+}
